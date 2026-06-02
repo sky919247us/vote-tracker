@@ -161,6 +161,32 @@ def main():
     suspects.sort(key=lambda x: -x["z"])
     suspects = suspects[:15]
 
+    # watch list（從 watch.txt 讀關注店家）
+    wf = pathlib.Path("watch.txt")
+    watch_rids = []
+    if wf.exists():
+        for line in wf.read_text(encoding="utf-8").splitlines():
+            line = line.split("#")[0].strip()
+            if line:
+                watch_rids.append(line)
+    watch_rows = []
+    if watch_rids:
+        ph = ",".join("?" * len(watch_rids))
+        for rid, n, city, addr, v in c.execute(
+                f"""SELECT r.retailerId,r.name,r.city,r.address,s.votes
+                    FROM snapshot s JOIN retailer r ON r.retailerId=s.retailerId
+                    WHERE s.ts=? AND s.retailerId IN ({ph})
+                    ORDER BY s.votes DESC""",
+                (now_ts, *watch_rids)):
+            prev = c.execute(
+                "SELECT votes FROM snapshot WHERE retailerId=? AND ts<? ORDER BY ts DESC LIMIT 1",
+                (rid, now_ts)).fetchone()
+            watch_rows.append({
+                "rid": rid, "name": n, "city": city, "address": addr,
+                "votes": v, "prev": prev[0] if prev else None,
+            })
+
+    dump("watch.json", {"rids": watch_rids, "rows": watch_rows})
     dump("latest.json", {"ts": now_ts, "ts_iso": ts_iso, "rows": latest})
     dump("series.json", {"names": name_map, "series": dict(series)})
     dump("summary.json", {"ts": now_ts, "cities": city_rows,

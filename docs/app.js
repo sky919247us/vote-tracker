@@ -30,17 +30,20 @@ document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
 // ───── 手動刷新按鈕 ─────
 const btn = $("refresh");
 const hint = $("refreshHint");
-const COOL = (window.CONFIG && window.CONFIG.cooldownMs) || 3600 * 1000;
 
+// 規則：當小時內已更新過 → 鎖到下個整點才能再按
 function updateBtnState(latestTsIso) {
   const lastUpdate = latestTsIso ? new Date(latestTsIso).getTime() : 0;
   const local = +localStorage.getItem("manualClick") || 0;
   const last = Math.max(lastUpdate, local);
-  const wait = COOL - (Date.now() - last);
+  const nextAllowed = last > 0 ? (Math.floor(last / 3600000) + 1) * 3600000 : 0;
+  const wait = nextAllowed - Date.now();
   if (wait > 0) {
     btn.disabled = true;
     const m = Math.ceil(wait / 60000);
-    hint.textContent = `（${m} 分鐘後可再次更新）`;
+    const nextTime = new Date(nextAllowed).toLocaleTimeString("zh-TW",
+      { timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", hour12: false });
+    hint.textContent = `（本小時已更新過，${nextTime} 後可再按；剩 ${m} 分）`;
     setTimeout(() => updateBtnState(latestTsIso), Math.min(wait, 60000));
   } else {
     btn.disabled = false;
@@ -78,9 +81,12 @@ const tbl = (cols, rows, empty = "無資料") => rows.length
   : `<div class="empty">${empty}</div>`;
 
 // ───── 載入並渲染 ─────
-Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "suspects"]
+Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "suspects", "watch"]
   .map(n => j(n + ".json").catch(() => ({}))))
-.then(([latest, series, summary, alerts, daily, forecast, suspects]) => {
+.then(([latest, series, summary, alerts, daily, forecast, suspects, watch]) => {
+
+  const watchSet = new Set((watch && watch.rids) || []);
+  const star = rid => watchSet.has(rid) ? "⭐ " : "";
 
   if (!latest.rows) {
     $("ts").innerHTML = "<span class='tag'>還沒有資料</span> 等 Action 第一次跑完";
@@ -90,9 +96,25 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
   $("ts").innerHTML = `<span class="tag">更新於 ${fmtTW(latest.ts_iso || latest.ts)} (UTC+8)</span>共 ${latest.rows.length} 家店`;
   updateBtnState(latest.ts_iso);
 
+  // 關注清單卡片
+  if (watch && watch.rows && watch.rows.length) {
+    $("watchCard").style.display = "";
+    $("watchBox").innerHTML = tbl(
+      [["店家", r => "⭐ " + r.name],
+       ["縣市", r => r.city],
+       ["地址", r => r.address],
+       ["票數", r => {
+          const d = r.prev == null ? null : (r.votes - r.prev);
+          const tag = d == null ? "" :
+            ` <span class="v ${d>=0?'up':'down'}">${d>=0?'+':''}${d}</span>`;
+          return `<b>${r.votes}</b>${tag}`;
+       }]],
+      watch.rows);
+  }
+
   // ── 總覽 ──
   $("top5").innerHTML = tbl(
-    [["#", (_, i) => i + 1], ["店家", r => r.name], ["縣市", r => r.city],
+    [["#", (_, i) => i + 1], ["店家", r => star(r.rid) + r.name], ["縣市", r => r.city],
      ["票數", r => `<b>${r.votes}</b>`]],
     latest.rows.slice(0, 5));
 
@@ -186,7 +208,8 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
 
   // ── 排行 ──
   const renderRows = rs => $("rows").innerHTML = rs.map((r, i) =>
-    `<tr><td>${i + 1}</td><td>${r.name}</td><td>${r.city}</td>
+    `<tr${watchSet.has(r.rid)?' style="background:#fffbea"':''}>
+     <td>${i + 1}</td><td>${star(r.rid)}${r.name}</td><td>${r.city}</td>
      <td>${r.address}</td><td class="v">${r.votes}</td></tr>`).join("");
   renderRows(latest.rows.slice(0, 200));
   $("q").oninput = e => {

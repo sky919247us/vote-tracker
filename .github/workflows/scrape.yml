@@ -16,15 +16,16 @@ jobs:
         with:
           fetch-depth: 0   # 完整歷史，rate limit 才看得到 votes.db 真正上次的 commit 時間
 
-      - name: Rate limit (max 1 update per hour)
+      - name: Rate limit (one update per hour boundary)
         id: gate
         run: |
           LAST=$(git log -1 --format=%ct -- votes.db 2>/dev/null || echo 0)
           NOW=$(date +%s)
-          DIFF=$((NOW - LAST))
-          echo "上次 votes.db 更新於 $((DIFF/60)) 分鐘前"
-          if [ "$LAST" -gt 0 ] && [ "$DIFF" -lt 3600 ]; then
-            echo "⏭️ 一小時內已更新過，跳過"
+          LAST_HOUR=$((LAST / 3600))
+          NOW_HOUR=$((NOW / 3600))
+          echo "上次 hour=$LAST_HOUR  現在 hour=$NOW_HOUR"
+          if [ "$LAST" -gt 0 ] && [ "$LAST_HOUR" -ge "$NOW_HOUR" ]; then
+            echo "⏭️ 本小時已更新過，跳過（要等下個整點）"
             echo "skip=true" >> $GITHUB_OUTPUT
           else
             echo "skip=false" >> $GITHUB_OUTPUT

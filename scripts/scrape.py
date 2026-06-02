@@ -37,7 +37,7 @@ def init_db():
 def parse(city, slug):
     r = requests.get(URL.format(slug), timeout=15)
     r.raise_for_status()
-    r.encoding = r.apparent_encoding
+    r.encoding = "utf-8"  # 來源 meta 宣告 utf-8；apparent_encoding 偶爾誤判（如高雄變 cp852）
     soup = BeautifulSoup(r.text, "html.parser")
     out = []
     for tr in soup.select("tr"):
