@@ -1,6 +1,6 @@
 # 運彩投票看板
 
-抓 [台彩投注站票選活動](https://vote.sportslottery.com.tw/) 每日 2 次（TW 09:00 / 21:00），用 GitHub Pages 顯示即時看板。
+抓 [運彩投注站票選活動](https://vote.sportslottery.com.tw/) 每日 2 次（TW 09:00 / 21:00），用 GitHub Pages 顯示即時看板。
 
 ## 功能
 
