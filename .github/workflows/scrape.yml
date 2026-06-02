@@ -23,7 +23,7 @@ jobs:
           NOW=$(date +%s)
           DIFF=$((NOW - LAST))
           echo "上次 votes.db 更新於 $((DIFF/60)) 分鐘前"
-          if [ "$LAST" -gt 0 ] && [ "$DIFF" -lt 60 ]; then
+          if [ "$LAST" -gt 0 ] && [ "$DIFF" -lt 3600 ]; then
             echo "⏭️ 一小時內已更新過，跳過"
             echo "skip=true" >> $GITHUB_OUTPUT
           else
