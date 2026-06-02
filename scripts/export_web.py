@@ -36,14 +36,34 @@ def main():
         today = datetime.date.today()
     yest = today - datetime.timedelta(days=1)
 
-    # latest
-    latest = [
-        {"rid": rid, "name": n, "city": city, "address": addr, "votes": v}
-        for rid, n, city, addr, v in c.execute("""
+    # 上一筆 ts 用來算排名變化
+    prev_ts_row = c.execute(
+        "SELECT ts FROM snapshot WHERE ts<? GROUP BY ts ORDER BY ts DESC LIMIT 1",
+        (now_ts,)).fetchone()
+    prev_rank = {}
+    if prev_ts_row:
+        for i, (rid,) in enumerate(c.execute("""
+            SELECT retailerId FROM snapshot WHERE ts=? ORDER BY votes DESC, retailerId
+        """, (prev_ts_row[0],))):
+            prev_rank[rid] = i + 1
+
+    latest = []
+    for i, (rid, n, city, addr, v) in enumerate(c.execute("""
             SELECT r.retailerId,r.name,r.city,r.address,s.votes FROM snapshot s
             JOIN retailer r ON r.retailerId=s.retailerId
-            WHERE s.ts=? ORDER BY s.votes DESC""", (now_ts,))
-    ]
+            WHERE s.ts=? ORDER BY s.votes DESC, r.retailerId""", (now_ts,))):
+        cur = i + 1
+        pr = prev_rank.get(rid)
+        if pr is None:
+            change, delta = "new", 0
+        elif pr > cur:
+            change, delta = "up", pr - cur
+        elif pr < cur:
+            change, delta = "down", pr - cur
+        else:
+            change, delta = "flat", 0
+        latest.append({"rid": rid, "name": n, "city": city, "address": addr,
+                       "votes": v, "rank_change": change, "rank_delta": delta})
 
     # series for top 50
     top_rids = [r["rid"] for r in latest[:50]]

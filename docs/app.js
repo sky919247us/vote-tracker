@@ -207,10 +207,20 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
     (forecast && forecast.rows) || [], "資料不足");
 
   // ── 排行 ──
+  const RANK_ICON = { up: "🔺", down: "🔻", flat: "➖", "new": "✨" };
+  const rankCell = r => {
+    const ic = RANK_ICON[r.rank_change] || "";
+    const d = r.rank_delta;
+    const tip = r.rank_change === "up"   ? `↑${d}`
+              : r.rank_change === "down" ? `↓${-d}`
+              : r.rank_change === "new"  ? "新進"
+              : "";
+    return `<span title="${tip}">${ic}</span>`;
+  };
   const renderRows = rs => $("rows").innerHTML = rs.map((r, i) =>
     `<tr${watchSet.has(r.rid)?' style="background:#fffbea"':''}>
-     <td>${i + 1}</td><td>${star(r.rid)}${r.name}</td><td>${r.city}</td>
-     <td>${r.address}</td><td class="v">${r.votes}</td></tr>`).join("");
+     <td>${i + 1} ${rankCell(r)}</td><td>${star(r.rid)}${r.name}</td>
+     <td>${r.city}</td><td>${r.address}</td><td class="v">${r.votes}</td></tr>`).join("");
   renderRows(latest.rows.slice(0, 200));
   $("q").oninput = e => {
     const q = e.target.value.trim().toLowerCase();
