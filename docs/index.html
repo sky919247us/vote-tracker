@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>台彩投票看板</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  body{font-family:-apple-system,"Microsoft JhengHei",sans-serif;
+       margin:0;padding:20px;background:#f5f5f7;color:#222;max-width:1200px;margin-left:auto;margin-right:auto}
+  h1{margin:8px 0}
+  h3{margin-top:0}
+  h4{margin:18px 0 8px}
+  .ts{color:#888;font-size:14px;margin-bottom:20px}
+  .topbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+  button{padding:8px 16px;background:#3b82f6;color:#fff;border:none;
+         border-radius:6px;font-size:14px;cursor:pointer}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:16px}
+  .tab{padding:8px 16px;background:#fff;border:1px solid #ddd;border-radius:6px;
+       cursor:pointer;font-size:14px;user-select:none}
+  .tab.active{background:#3b82f6;color:#fff;border-color:#3b82f6}
+  .panel{display:none}
+  .panel.active{display:block}
+  .card{background:#fff;border-radius:12px;padding:20px;margin-bottom:20px;
+        box-shadow:0 1px 4px rgba(0,0,0,.06)}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{padding:8px 10px;text-align:left;border-bottom:1px solid #eee;vertical-align:top}
+  th{background:#fafafa;font-weight:600}
+  td.v{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  .v.up{color:#16a34a}.v.down{color:#dc2626}
+  .search{padding:8px 12px;border:1px solid #ddd;border-radius:6px;width:280px;font-size:14px}
+  .chart{height:480px}
+  .tag{display:inline-block;padding:2px 8px;background:#eef;border-radius:4px;
+       font-size:12px;color:#447;margin-right:6px}
+  .empty{color:#999;font-style:italic;padding:20px;text-align:center}
+  .hint{font-size:13px;color:#888}
+</style>
+</head>
+<body>
+<h1>🗳️ 台彩投票看板</h1>
+<div class="topbar">
+  <button id="refresh">🔄 立即更新</button>
+  <span id="refreshHint" class="hint"></span>
+</div>
+<div class="ts" id="ts">載入中…</div>
+
+<div class="tabs">
+  <div class="tab active" data-p="overview">總覽</div>
+  <div class="tab" data-p="alerts">🚨 異常</div>
+  <div class="tab" data-p="daily">📅 每日</div>
+  <div class="tab" data-p="forecast">🔮 預估</div>
+  <div class="tab" data-p="ranking">店家排行</div>
+</div>
+
+<div class="panel active" data-p="overview">
+  <div class="card"><h3>TOP 5</h3><div id="top5"></div></div>
+  <div class="card"><h3>全國總票數趨勢</h3><div id="total" class="chart"></div></div>
+  <div class="card"><h3>TOP 10 走勢</h3><div id="top10" class="chart"></div></div>
+  <div class="card"><h3>縣市排行</h3><div id="cities" class="chart" style="height:360px"></div></div>
+</div>
+
+<div class="panel" data-p="alerts">
+  <div class="card"><h3>🚨 暴衝（近 <span id="winH">12</span>h 增 ≥10）</h3><div id="spikes"></div></div>
+  <div class="card"><h3>⚠️ 票數歸零（疑似被清票）</h3><div id="zeros"></div></div>
+  <div class="card"><h3>📉 大幅倒退</h3><div id="drops"></div></div>
+  <div class="card"><h3>🕵️ Z-score 異常（疑似刷票，需 ≥4 天資料）</h3><div id="suspects"></div></div>
+</div>
+
+<div class="panel" data-p="daily">
+  <div class="card" id="dailyBox"></div>
+</div>
+
+<div class="panel" data-p="forecast">
+  <div class="card">
+    <h3>預估最終排名（外推到 <span id="endDate"></span>）</h3>
+    <div id="forecastBox"></div>
+  </div>
+</div>
+
+<div class="panel" data-p="ranking">
+  <div class="card">
+    <h3>店家排行 <input class="search" id="q" placeholder="搜尋店名/地址…"></h3>
+    <table>
+      <thead><tr><th>#</th><th>店家</th><th>縣市</th><th>地址</th>
+        <th style="text-align:right">票數</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

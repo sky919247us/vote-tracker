@@ -1,0 +1,54 @@
+name: scrape
+on:
+  schedule:
+    # UTC 01:00 / 13:00 = TW 09:00 / 21:00
+    - cron: "0 1,13 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rate limit (max 1 update per hour)
+        id: gate
+        run: |
+          LAST=$(git log -1 --format=%ct -- votes.db 2>/dev/null || echo 0)
+          NOW=$(date +%s)
+          DIFF=$((NOW - LAST))
+          echo "上次 votes.db 更新於 $((DIFF/60)) 分鐘前"
+          if [ "$LAST" -gt 0 ] && [ "$DIFF" -lt 3300 ]; then
+            echo "⏭️ 一小時內已更新過，跳過"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.gate.outputs.skip != 'true'
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install deps
+        if: steps.gate.outputs.skip != 'true'
+        run: pip install -r requirements.txt
+
+      - name: Scrape & export
+        if: steps.gate.outputs.skip != 'true'
+        run: |
+          python scripts/scrape.py
+          python scripts/export_web.py
+
+      - name: Commit & push
+        if: steps.gate.outputs.skip != 'true'
+        run: |
+          git config user.name github-actions
+          git config user.email actions@github.com
+          git add votes.db docs/data fail_count.txt 2>/dev/null || true
+          git diff --cached --quiet || git commit -m "snapshot $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git push
