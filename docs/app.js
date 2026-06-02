@@ -49,24 +49,14 @@ function updateBtnState(latestTsIso) {
 }
 
 btn.onclick = async () => {
-  if (!window.CONFIG || !CONFIG.pat_b64 || CONFIG.pat_b64 === "PASTE_YOUR_BASE64_PAT_HERE") {
-    alert("尚未設定 PAT，請編輯 docs/config.js");
+  if (!window.CONFIG || !CONFIG.workerUrl || CONFIG.workerUrl === "PASTE_YOUR_WORKER_URL_HERE") {
+    alert("尚未設定 Worker 網址，請編輯 docs/config.js");
     return;
   }
   btn.disabled = true; btn.textContent = "觸發中…";
   try {
-    const pat = atob(CONFIG.pat_b64);
-    const url = `https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/actions/workflows/${CONFIG.workflow}/dispatches`;
-    const r = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Authorization": "Bearer " + pat,
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-      body: JSON.stringify({ ref: "main" }),
-    });
-    if (r.status === 204) {
+    const r = await fetch(CONFIG.workerUrl, { method: "POST" });
+    if (r.ok) {
       localStorage.setItem("manualClick", Date.now());
       btn.textContent = "✓ 已觸發，約 1-2 分後完成";
       setTimeout(() => location.reload(), 90000);
