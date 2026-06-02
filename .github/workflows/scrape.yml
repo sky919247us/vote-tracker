@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 完整歷史，rate limit 才看得到 votes.db 真正上次的 commit 時間
 
       - name: Rate limit (max 1 update per hour)
         id: gate
