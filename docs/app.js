@@ -1,6 +1,25 @@
 const j = p => fetch("data/" + p + "?t=" + Date.now()).then(r => r.json());
 const $ = id => document.getElementById(id);
 
+// ───── 時間格式（一律顯示台灣時區） ─────
+const TW_FMT = new Intl.DateTimeFormat("zh-TW", {
+  timeZone: "Asia/Taipei", hour12: false,
+  year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", second: "2-digit",
+});
+const TW_SHORT = new Intl.DateTimeFormat("zh-TW", {
+  timeZone: "Asia/Taipei", hour12: false,
+  month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+});
+function fmtTW(s, short = false) {
+  if (!s) return "";
+  // 後端送來的 ts 可能是 "YYYY-MM-DD HH:MM:SS"（已是 TW 時間，無 TZ）
+  // 或 ts_iso "YYYY-MM-DDTHH:MM:SS+08:00"（有 TZ）
+  const d = new Date(s.includes("T") ? s : s.replace(" ", "T") + "+08:00");
+  if (isNaN(d)) return s;
+  return (short ? TW_SHORT : TW_FMT).format(d).replace(/\//g, "-");
+}
+
 // ───── Tabs ─────
 document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
   document.querySelectorAll(".tab,.panel").forEach(e => e.classList.remove("active"));
@@ -78,7 +97,7 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
     return;
   }
 
-  $("ts").innerHTML = `<span class="tag">更新於 ${latest.ts}</span>共 ${latest.rows.length} 家店`;
+  $("ts").innerHTML = `<span class="tag">更新於 ${fmtTW(latest.ts_iso || latest.ts)} (UTC+8)</span>共 ${latest.rows.length} 家店`;
   updateBtnState(latest.ts_iso);
 
   // ── 總覽 ──
@@ -89,17 +108,20 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
 
   const h = summary.total_history || [];
   Plotly.newPlot("total",
-    [{ x: h.map(r => r[0]), y: h.map(r => r[1]), type: "scatter", mode: "lines",
+    [{ x: h.map(r => fmtTW(r[0], true)), y: h.map(r => r[1]),
+       type: "scatter", mode: "lines",
        fill: "tozeroy", line: { color: "#3b82f6" } }],
-    { margin: { t: 20 }, yaxis: { title: "票數" } },
+    { margin: { t: 20 }, yaxis: { title: "票數" },
+      xaxis: { title: "台灣時間" } },
     { responsive: true });
 
   Plotly.newPlot("top10", latest.rows.slice(0, 10).map(r => {
     const s = (series.series && series.series[r.rid]) || [];
-    return { x: s.map(p => p[0]), y: s.map(p => p[1]),
+    return { x: s.map(p => fmtTW(p[0], true)), y: s.map(p => p[1]),
              name: series.names ? series.names[r.rid] : r.name,
              type: "scatter", mode: "lines+markers" };
-  }), { margin: { t: 20 }, legend: { orientation: "h", y: -0.3 } },
+  }), { margin: { t: 20 }, legend: { orientation: "h", y: -0.3 },
+        xaxis: { title: "台灣時間" } },
      { responsive: true });
 
   Plotly.newPlot("cities",

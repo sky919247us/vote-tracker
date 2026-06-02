@@ -27,10 +27,14 @@ def main():
 
     try:
         import zoneinfo
-        now_tw = datetime.datetime.now(zoneinfo.ZoneInfo("Asia/Taipei"))
+        TW = zoneinfo.ZoneInfo("Asia/Taipei")
+        now_tw = datetime.datetime.now(TW)
         ts_iso = now_tw.isoformat(timespec="seconds")
+        today = now_tw.date()
     except Exception:
         ts_iso = now_ts
+        today = datetime.date.today()
+    yest = today - datetime.timedelta(days=1)
 
     # latest
     latest = [
@@ -85,9 +89,7 @@ def main():
     total_history = c.execute(
         "SELECT ts, SUM(votes) FROM snapshot GROUP BY ts ORDER BY ts").fetchall()
 
-    # daily
-    today = datetime.date.today()
-    yest = today - datetime.timedelta(days=1)
+    # daily (today/yest 已在上方用 TW 算出)
     end_ts = c.execute("SELECT MAX(ts) FROM snapshot WHERE ts<?",
                        (f"{today} 00:00:00",)).fetchone()[0]
     start_ts = c.execute("SELECT MIN(ts) FROM snapshot WHERE ts>=?",
