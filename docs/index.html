@@ -56,7 +56,16 @@
 <div class="panel active" data-p="overview">
   <div class="card"><h3>TOP 5</h3><div id="top5"></div></div>
   <div class="card"><h3>全國總票數趨勢</h3><div id="total" class="chart"></div></div>
-  <div class="card"><h3>TOP 10 走勢</h3><div id="top10" class="chart"></div></div>
+  <div class="card">
+    <h3 style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      TOP <select id="topN" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:14px">
+        <option value="10">10</option>
+        <option value="20">20</option>
+        <option value="30">30</option>
+      </select> 走勢
+    </h3>
+    <div id="top10" class="chart"></div>
+  </div>
   <div class="card"><h3>縣市排行</h3><div id="cities" class="chart" style="height:360px"></div></div>
 </div>
 

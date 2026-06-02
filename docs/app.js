@@ -105,14 +105,25 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
       xaxis: { title: "台灣時間" } },
     { responsive: true });
 
-  Plotly.newPlot("top10", latest.rows.slice(0, 10).map(r => {
-    const s = (series.series && series.series[r.rid]) || [];
-    return { x: s.map(p => fmtTW(p[0], true)), y: s.map(p => p[1]),
-             name: series.names ? series.names[r.rid] : r.name,
-             type: "scatter", mode: "lines+markers" };
-  }), { margin: { t: 20 }, legend: { orientation: "h", y: -0.3 },
-        xaxis: { title: "台灣時間" } },
-     { responsive: true });
+  const renderTopChart = (n) => {
+    Plotly.newPlot("top10", latest.rows.slice(0, n).map(r => {
+      const s = (series.series && series.series[r.rid]) || [];
+      return { x: s.map(p => fmtTW(p[0], true)), y: s.map(p => p[1]),
+               name: series.names ? series.names[r.rid] : r.name,
+               type: "scatter", mode: "lines+markers" };
+    }), { margin: { t: 20 }, legend: { orientation: "h", y: -0.3 },
+          xaxis: { title: "台灣時間" } },
+       { responsive: true });
+  };
+  const topSel = $("topN");
+  const savedN = +localStorage.getItem("topN") || 10;
+  topSel.value = String(savedN);
+  renderTopChart(savedN);
+  topSel.onchange = () => {
+    const n = +topSel.value;
+    localStorage.setItem("topN", n);
+    renderTopChart(n);
+  };
 
   Plotly.newPlot("cities",
     [{ x: (summary.cities || []).map(c => c.city),
