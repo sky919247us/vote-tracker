@@ -94,9 +94,9 @@ def main():
         return {"name": name, "city": city, "address": addr,
                 "now": v, "prev": b, "delta": d}
 
-    spikes = [row(*r) for r in diff_rows if r[5] >= SPIKE_THRESHOLD][:20]
+    spikes = [row(*r) for r in diff_rows if r[5] >= SPIKE_THRESHOLD][:100]
     zeros = [row(*r) for r in diff_rows if r[4] >= ZERO_FROM and r[3] == 0]
-    drops = [row(*r) for r in diff_rows if r[5] <= DROP_THRESHOLD][:20]
+    drops = [row(*r) for r in diff_rows if r[5] <= DROP_THRESHOLD][:100]
 
     # summary
     city_rows = [
