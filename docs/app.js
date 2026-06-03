@@ -31,24 +31,16 @@ document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
 const btn = $("refresh");
 const hint = $("refreshHint");
 
-// 規則：當小時內已更新過 → 鎖到下個整點才能再按
+// 自動每小時整點更新 → 顯示下次更新倒數
 function updateBtnState(latestTsIso) {
-  const lastUpdate = latestTsIso ? new Date(latestTsIso).getTime() : 0;
-  const local = +localStorage.getItem("manualClick") || 0;
-  const last = Math.max(lastUpdate, local);
-  const nextAllowed = last > 0 ? (Math.floor(last / 3600000) + 1) * 3600000 : 0;
-  const wait = nextAllowed - Date.now();
-  if (wait > 0) {
-    btn.disabled = true;
-    const m = Math.ceil(wait / 60000);
-    const nextTime = new Date(nextAllowed).toLocaleTimeString("zh-TW",
-      { timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", hour12: false });
-    hint.textContent = `（本小時已更新過，${nextTime} 後可再按；剩 ${m} 分）`;
-    setTimeout(() => updateBtnState(latestTsIso), Math.min(wait, 60000));
-  } else {
-    btn.disabled = false;
-    hint.textContent = "";
-  }
+  const now = Date.now();
+  const nextHour = (Math.floor(now / 3600000) + 1) * 3600000;
+  const wait = nextHour - now;
+  const nextTime = new Date(nextHour).toLocaleTimeString("zh-TW",
+    { timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", hour12: false });
+  const m = Math.ceil(wait / 60000);
+  hint.textContent = `下次自動更新：${nextTime}（${m} 分後）`;
+  setTimeout(() => updateBtnState(latestTsIso), Math.min(wait + 5000, 30000));
 }
 
 btn.onclick = async () => {
