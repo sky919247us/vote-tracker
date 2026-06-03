@@ -43,6 +43,36 @@ function updateBtnState(latestTsIso) {
   setTimeout(() => updateBtnState(latestTsIso), Math.min(wait + 5000, 30000));
 }
 
+// 每整點後 3 分鐘是「更新中」窗口：若 latest.ts 還停在上小時就顯示提示+輪詢
+function watchForUpdate(latestTsIso) {
+  const now = Date.now();
+  const curHour = Math.floor(now / 3600000);
+  const lastHour = latestTsIso ? Math.floor(new Date(latestTsIso).getTime() / 3600000) : 0;
+  const secIntoHour = (now / 1000) % 3600;
+  if (secIntoHour < 180 && lastHour < curHour) {
+    const remain = Math.ceil((180 - secIntoHour));
+    $("ts").innerHTML =
+      `<span class="tag" style="background:#fef3c7;color:#92400e">🔄 數據更新中…</span>` +
+      `預計 ${Math.ceil(remain/60)} 分內完成`;
+    // 20 秒後拉一次 latest.json 看新資料來了沒
+    setTimeout(async () => {
+      try {
+        const d = await fetch("data/latest.json?t=" + Date.now()).then(r => r.json());
+        const newH = Math.floor(new Date(d.ts_iso || d.ts).getTime() / 3600000);
+        if (newH >= curHour) {
+          location.reload();
+        } else {
+          watchForUpdate(latestTsIso);
+        }
+      } catch (e) {
+        watchForUpdate(latestTsIso);
+      }
+    }, 20000);
+    return true;
+  }
+  return false;
+}
+
 btn.onclick = async () => {
   if (!window.CONFIG || !CONFIG.workerUrl || CONFIG.workerUrl === "PASTE_YOUR_WORKER_URL_HERE") {
     alert("尚未設定 Worker 網址，請編輯 docs/config.js");
@@ -104,6 +134,7 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
 
   $("ts").innerHTML = `<span class="tag">更新於 ${fmtTW(latest.ts_iso || latest.ts)} (UTC+8)</span>共 ${latest.rows.length} 家店`;
   updateBtnState(latest.ts_iso);
+  watchForUpdate(latest.ts_iso);
 
   // 全國排名（從 latest.rows 算）
   const rankMap = {};
