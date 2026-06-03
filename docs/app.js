@@ -114,7 +114,8 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
 
   // ── 總覽 ──
   $("top5").innerHTML = tbl(
-    [["#", (_, i) => i + 1], ["店家", r => star(r.rid) + r.name], ["縣市", r => r.city],
+    [["#", (r, i) => `${i + 1} ${rankCell(r)}`],
+     ["店家", r => star(r.rid) + r.name], ["縣市", r => r.city],
      ["票數", r => `<b>${r.votes}</b>`]],
     latest.rows.slice(0, 5));
 
@@ -185,10 +186,12 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
       <p>全國 ${d.total_start} → <b>${d.total_now}</b>
          <span class="v up">(+${d.total_now - d.total_start})</span></p>
       <h4>票數 TOP 10</h4>
-      ${tbl([["#", (_, i) => i + 1], ["店家", r => r.name],
+      ${tbl([["#", (r, i) => `${i + 1} ${rankCell(r)}`],
+             ["店家", r => star(r.rid) + r.name],
              ["縣市", r => r.city], ["票數", r => r.votes]], d.top_now || [])}
       <h4>單日增幅 TOP 10</h4>
-      ${tbl([["#", (_, i) => i + 1], ["店家", r => r.name], ["縣市", r => r.city],
+      ${tbl([["#", (r, i) => `${i + 1} ${rankCell(r)}`],
+             ["店家", r => star(r.rid) + r.name], ["縣市", r => r.city],
              ["增票", r => `+${r.delta}`], ["當下", r => r.votes]],
             d.top_gain || [])}
       <h4>歸零店家</h4>

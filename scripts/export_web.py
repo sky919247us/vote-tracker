@@ -116,24 +116,48 @@ def main():
                          (f"{yest} 00:00:00",)).fetchone()[0]
     daily = None
     if end_ts and start_ts and end_ts != start_ts:
+        # 計算「昨日結束 vs 前日結束」的排名變化
+        # 前日基準 = yest 00:00 之前最後一筆
+        ref_ts = c.execute("SELECT MAX(ts) FROM snapshot WHERE ts<?",
+                           (f"{yest} 00:00:00",)).fetchone()[0]
+        end_rank = {rid: i+1 for i,(rid,) in enumerate(c.execute(
+            "SELECT retailerId FROM snapshot WHERE ts=? ORDER BY votes DESC, retailerId",
+            (end_ts,)))}
+        ref_rank = {rid: i+1 for i,(rid,) in enumerate(c.execute(
+            "SELECT retailerId FROM snapshot WHERE ts=? ORDER BY votes DESC, retailerId",
+            (ref_ts,)))} if ref_ts else {}
+        def rchange(rid):
+            cur = end_rank.get(rid); pr = ref_rank.get(rid)
+            if cur is None: return ("flat", 0)
+            if pr is None:  return ("new", 0)
+            if pr > cur:    return ("up", pr-cur)
+            if pr < cur:    return ("down", pr-cur)
+            return ("flat", 0)
+
         drows = c.execute("""
             WITH e AS (SELECT retailerId,votes FROM snapshot WHERE ts=?),
                  s AS (SELECT retailerId,votes FROM snapshot WHERE ts=?)
-            SELECT r.name,r.city,e.votes,COALESCE(s.votes,0),e.votes-COALESCE(s.votes,0) d
+            SELECT r.retailerId,r.name,r.city,e.votes,COALESCE(s.votes,0),e.votes-COALESCE(s.votes,0) d
             FROM e JOIN retailer r ON r.retailerId=e.retailerId
             LEFT JOIN s ON s.retailerId=e.retailerId ORDER BY e.votes DESC
         """, (end_ts, start_ts)).fetchall()
+
+        def with_rank(d):
+            ch, dl = rchange(d["rid"])
+            return {**d, "rank_change": ch, "rank_delta": dl}
+
         daily = {
             "date": str(yest),
-            "total_now": sum(r[2] for r in drows),
-            "total_start": sum(r[3] for r in drows),
-            "top_now": [{"name": n, "city": c1, "votes": v}
-                        for n, c1, v, _, _ in drows[:10]],
-            "top_gain": sorted([{"name": n, "city": c1, "delta": d, "votes": v}
-                                for n, c1, v, _, d in drows],
-                               key=lambda x: -x["delta"])[:10],
+            "total_now": sum(r[3] for r in drows),
+            "total_start": sum(r[4] for r in drows),
+            "top_now": [with_rank({"rid": rid, "name": n, "city": c1, "votes": v})
+                        for rid, n, c1, v, _, _ in drows[:10]],
+            "top_gain": sorted(
+                [with_rank({"rid": rid, "name": n, "city": c1, "delta": d, "votes": v})
+                 for rid, n, c1, v, _, d in drows],
+                key=lambda x: -x["delta"])[:10],
             "zeroed": [{"name": n, "city": c1, "prev": b}
-                       for n, c1, v, b, _ in drows if b >= ZERO_FROM and v == 0][:20],
+                       for rid, n, c1, v, b, _ in drows if b >= ZERO_FROM and v == 0][:20],
         }
 
     # forecast
