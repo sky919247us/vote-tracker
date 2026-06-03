@@ -117,9 +117,20 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
   const rankMap = {};
   latest.rows.forEach((r, i) => { rankMap[r.rid] = i + 1; });
 
-  // 關注清單卡片
+  // 關注清單卡片 + 隱藏切換
   if (watch && watch.rows && watch.rows.length) {
     $("watchCard").style.display = "";
+    const box = $("watchBox"), tg = $("watchToggle");
+    const apply = (hidden) => {
+      box.style.display = hidden ? "none" : "";
+      tg.textContent = hidden ? "顯示" : "隱藏";
+    };
+    apply(localStorage.getItem("watchHidden") === "1");
+    tg.onclick = () => {
+      const h = box.style.display !== "none";
+      localStorage.setItem("watchHidden", h ? "1" : "0");
+      apply(h);
+    };
     $("watchBox").innerHTML = tbl(
       [["#", r => rankMap[r.rid] || "-"],
        ["店家", r => "⭐ " + r.name],
