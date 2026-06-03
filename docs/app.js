@@ -88,6 +88,23 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
   const watchSet = new Set((watch && watch.rids) || []);
   const star = rid => watchSet.has(rid) ? "⭐ " : "";
 
+  // 排名變化 icon (台股慣例: 紅升綠跌)
+  const RANK_HTML = {
+    up:   '<span style="color:#dc2626;font-weight:bold">▲</span>',
+    down: '<span style="color:#16a34a;font-weight:bold">▼</span>',
+    flat: '<span style="color:#999">─</span>',
+    "new": '<span style="color:#f59e0b">✦</span>',
+  };
+  const rankCell = r => {
+    const ic = RANK_HTML[r.rank_change] || "";
+    const d = r.rank_delta;
+    const tip = r.rank_change === "up"   ? `↑${d}`
+              : r.rank_change === "down" ? `↓${-d}`
+              : r.rank_change === "new"  ? "新進"
+              : "";
+    return `<span title="${tip}">${ic}</span>`;
+  };
+
   if (!latest.rows) {
     $("ts").innerHTML = "<span class='tag'>還沒有資料</span> 等 Action 第一次跑完";
     return;
@@ -210,22 +227,6 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
     (forecast && forecast.rows) || [], "資料不足");
 
   // ── 排行 ──
-  // 台股慣例: 紅=上漲, 綠=下跌
-  const RANK_HTML = {
-    up:   '<span style="color:#dc2626;font-weight:bold">▲</span>',
-    down: '<span style="color:#16a34a;font-weight:bold">▼</span>',
-    flat: '<span style="color:#999">─</span>',
-    "new": '<span style="color:#f59e0b">✦</span>',
-  };
-  const rankCell = r => {
-    const ic = RANK_HTML[r.rank_change] || "";
-    const d = r.rank_delta;
-    const tip = r.rank_change === "up"   ? `↑${d}`
-              : r.rank_change === "down" ? `↓${-d}`
-              : r.rank_change === "new"  ? "新進"
-              : "";
-    return `<span title="${tip}">${ic}</span>`;
-  };
   const renderRows = rs => $("rows").innerHTML = rs.map((r, i) =>
     `<tr${watchSet.has(r.rid)?' style="background:#fffbea"':''}>
      <td>${i + 1} ${rankCell(r)}</td><td>${star(r.rid)}${r.name}</td>
