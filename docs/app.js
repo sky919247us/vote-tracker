@@ -207,9 +207,15 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
     (forecast && forecast.rows) || [], "資料不足");
 
   // ── 排行 ──
-  const RANK_ICON = { up: "🔺", down: "🔻", flat: "➖", "new": "✨" };
+  // 台股慣例: 紅=上漲, 綠=下跌
+  const RANK_HTML = {
+    up:   '<span style="color:#dc2626;font-weight:bold">▲</span>',
+    down: '<span style="color:#16a34a;font-weight:bold">▼</span>',
+    flat: '<span style="color:#999">─</span>',
+    "new": '<span style="color:#f59e0b">✦</span>',
+  };
   const rankCell = r => {
-    const ic = RANK_ICON[r.rank_change] || "";
+    const ic = RANK_HTML[r.rank_change] || "";
     const d = r.rank_delta;
     const tip = r.rank_change === "up"   ? `↑${d}`
               : r.rank_change === "down" ? `↓${-d}`
