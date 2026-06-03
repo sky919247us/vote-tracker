@@ -76,8 +76,8 @@ btn.onclick = async () => {
 
 // ───── 表格 helper ─────
 const tbl = (cols, rows, empty = "無資料") => rows.length
-  ? `<table><thead><tr>${cols.map(c => `<th>${c[0]}</th>`).join("")}</tr></thead>
-     <tbody>${rows.map((r, i) => `<tr>${cols.map(c => `<td>${c[1](r, i)}</td>`).join("")}</tr>`).join("")}</tbody></table>`
+  ? `<div class="tableWrap"><table><thead><tr>${cols.map(c => `<th>${c[0]}</th>`).join("")}</tr></thead>
+     <tbody>${rows.map((r, i) => `<tr>${cols.map(c => `<td>${c[1](r, i)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`
   : `<div class="empty">${empty}</div>`;
 
 // ───── 載入並渲染 ─────
@@ -113,11 +113,16 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
   $("ts").innerHTML = `<span class="tag">更新於 ${fmtTW(latest.ts_iso || latest.ts)} (UTC+8)</span>共 ${latest.rows.length} 家店`;
   updateBtnState(latest.ts_iso);
 
+  // 全國排名（從 latest.rows 算）
+  const rankMap = {};
+  latest.rows.forEach((r, i) => { rankMap[r.rid] = i + 1; });
+
   // 關注清單卡片
   if (watch && watch.rows && watch.rows.length) {
     $("watchCard").style.display = "";
     $("watchBox").innerHTML = tbl(
-      [["店家", r => "⭐ " + r.name],
+      [["#", r => rankMap[r.rid] || "-"],
+       ["店家", r => "⭐ " + r.name],
        ["縣市", r => r.city],
        ["地址", r => r.address],
        ["票數", r => {
