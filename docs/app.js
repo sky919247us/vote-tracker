@@ -157,22 +157,23 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
     $("watchBox").innerHTML = tbl(
       [["#", r => rankMap[r.rid] || "-"],
        ["店家", r => "⭐ " + r.name],
-       ["縣市", r => r.city],
-       ["地址", r => r.address],
        ["票數", r => {
           const d = r.prev == null ? null : (r.votes - r.prev);
           const tag = d == null ? "" :
             ` <span class="v ${d>=0?'up':'down'}">${d>=0?'+':''}${d}</span>`;
           return `<b>${r.votes}</b>${tag}`;
-       }]],
+       }],
+       ["縣市", r => r.city],
+       ["地址", r => r.address]],
       watch.rows);
   }
 
   // ── 總覽 ──
   $("top5").innerHTML = tbl(
     [["#", (r, i) => `${i + 1} ${rankCell(r)}`],
-     ["店家", r => star(r.rid) + r.name], ["縣市", r => r.city],
-     ["票數", r => `<b>${r.votes}</b>`]],
+     ["店家", r => star(r.rid) + r.name],
+     ["票數", r => `<b>${r.votes}</b>`],
+     ["縣市", r => r.city]],
     latest.rows.slice(0, 5));
 
   const h = summary.total_history || [];
@@ -219,16 +220,17 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
   const deltaCell = r =>
     `<span class="v ${r.delta >= 0 ? 'up' : 'down'}">${r.prev} → <b>${r.now}</b> (${r.delta >= 0 ? '+' : ''}${r.delta})</span>`;
   $("spikes").innerHTML = tbl(
-    [["店家", r => r.name], ["縣市", r => r.city], ["地址", r => r.address],
-     ["變化", deltaCell]],
+    [["店家", r => r.name], ["變化", deltaCell],
+     ["縣市", r => r.city], ["地址", r => r.address]],
     alerts.spikes || [], "無暴衝");
   $("zeros").innerHTML = tbl(
-    [["店家", r => r.name], ["縣市", r => r.city], ["地址", r => r.address],
-     ["變化", r => `<span class="v down">${r.prev} → <b>0</b></span>`]],
+    [["店家", r => r.name],
+     ["變化", r => `<span class="v down">${r.prev} → <b>0</b></span>`],
+     ["縣市", r => r.city], ["地址", r => r.address]],
     alerts.zeros || [], "無歸零事件");
   $("drops").innerHTML = tbl(
-    [["店家", r => r.name], ["縣市", r => r.city], ["地址", r => r.address],
-     ["變化", deltaCell]],
+    [["店家", r => r.name], ["變化", deltaCell],
+     ["縣市", r => r.city], ["地址", r => r.address]],
     alerts.drops || [], "無倒退");
   $("suspects").innerHTML = tbl(
     [["店家", r => r.name], ["當日增票", r => `+${r.delta}`],
@@ -245,14 +247,19 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
       <h4>票數 TOP 10</h4>
       ${tbl([["#", (r, i) => `${i + 1} ${rankCell(r)}`],
              ["店家", r => star(r.rid) + r.name],
-             ["縣市", r => r.city], ["票數", r => r.votes]], d.top_now || [])}
+             ["票數", r => r.votes],
+             ["縣市", r => r.city]], d.top_now || [])}
       <h4>單日增幅 TOP 10</h4>
       ${tbl([["#", (r, i) => `${i + 1} ${rankCell(r)}`],
-             ["店家", r => star(r.rid) + r.name], ["縣市", r => r.city],
-             ["增票", r => `+${r.delta}`], ["當下", r => r.votes]],
+             ["店家", r => star(r.rid) + r.name],
+             ["增票", r => `+${r.delta}`],
+             ["當下", r => r.votes],
+             ["縣市", r => r.city]],
             d.top_gain || [])}
       <h4>歸零店家</h4>
-      ${tbl([["店家", r => r.name], ["縣市", r => r.city], ["原票數", r => r.prev]],
+      ${tbl([["店家", r => r.name],
+             ["原票數", r => r.prev],
+             ["縣市", r => r.city]],
             d.zeroed || [], "今日無歸零")}`;
   } else {
     $("dailyBox").innerHTML = `<div class="empty">資料不足（明天起會有日報）</div>`;
@@ -261,16 +268,17 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
   // ── 預估 ──
   $("endDate").textContent = (forecast && forecast.end_date) || "—";
   $("forecastBox").innerHTML = tbl(
-    [["#", (_, i) => i + 1], ["店家", r => r.name], ["縣市", r => r.city],
+    [["#", (_, i) => i + 1], ["店家", r => r.name],
+     ["預估最終", r => `<b>${r.projected}</b>`],
      ["當下", r => r.now], ["日均", r => r.per_day],
-     ["預估最終", r => `<b>${r.projected}</b>`]],
+     ["縣市", r => r.city]],
     (forecast && forecast.rows) || [], "資料不足");
 
   // ── 排行 ──
   const renderRows = rs => $("rows").innerHTML = rs.map((r, i) =>
     `<tr${watchSet.has(r.rid)?' style="background:#fffbea"':''}>
      <td>${i + 1} ${rankCell(r)}</td><td>${star(r.rid)}${r.name}</td>
-     <td>${r.city}</td><td>${r.address}</td><td class="v">${r.votes}</td></tr>`).join("");
+     <td class="v">${r.votes}</td><td>${r.city}</td><td>${r.address}</td></tr>`).join("");
   renderRows(latest.rows.slice(0, 100));
   $("q").oninput = e => {
     const q = e.target.value.trim().toLowerCase();
