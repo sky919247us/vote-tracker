@@ -10,7 +10,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 
 END_DATE = datetime.date(2026, 7, 31)
 SPIKE_HOURS = 12
-SPIKE_THRESHOLD = 10
+SPIKE_THRESHOLD = 100
 ZERO_FROM = 20
 DROP_THRESHOLD = -10
 
@@ -236,6 +236,7 @@ def main():
     dump("summary.json", {"ts": now_ts, "cities": city_rows,
                           "total_history": total_history})
     dump("alerts.json", {"ts": now_ts, "window_h": SPIKE_HOURS,
+                         "threshold": SPIKE_THRESHOLD,
                          "spikes": spikes, "zeros": zeros, "drops": drops})
     dump("daily.json", daily or {})
     dump("forecast.json", {"end_date": str(END_DATE), "rows": forecast})

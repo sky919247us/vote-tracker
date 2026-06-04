@@ -215,6 +215,7 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
 
   // ── 異常 ──
   $("winH").textContent = alerts.window_h || 12;
+  $("winT").textContent = alerts.threshold || 100;
   const deltaCell = r =>
     `<span class="v ${r.delta >= 0 ? 'up' : 'down'}">${r.prev} → <b>${r.now}</b> (${r.delta >= 0 ? '+' : ''}${r.delta})</span>`;
   $("spikes").innerHTML = tbl(
