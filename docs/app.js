@@ -270,14 +270,14 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
     `<tr${watchSet.has(r.rid)?' style="background:#fffbea"':''}>
      <td>${i + 1} ${rankCell(r)}</td><td>${star(r.rid)}${r.name}</td>
      <td>${r.city}</td><td>${r.address}</td><td class="v">${r.votes}</td></tr>`).join("");
-  renderRows(latest.rows.slice(0, 200));
+  renderRows(latest.rows.slice(0, 100));
   $("q").oninput = e => {
     const q = e.target.value.trim().toLowerCase();
     renderRows(q
       ? latest.rows.filter(r =>
           r.name.toLowerCase().includes(q) ||
           r.address.toLowerCase().includes(q)
-        ).slice(0, 200)
-      : latest.rows.slice(0, 200));
+        ).slice(0, 100)
+      : latest.rows.slice(0, 100));
   };
 });
