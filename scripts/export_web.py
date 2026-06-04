@@ -65,15 +65,24 @@ def main():
         latest.append({"rid": rid, "name": n, "city": city, "address": addr,
                        "votes": v, "rank_change": change, "rank_delta": delta})
 
-    # series for top 50
+    # series for top 50 — 每天降採樣為 4 個時段 (00/06/12/18)
     top_rids = [r["rid"] for r in latest[:50]]
-    series = defaultdict(list)
+    raw_series = defaultdict(list)
     if top_rids:
         ph = ",".join("?" * len(top_rids))
         for rid, ts, v in c.execute(
                 f"""SELECT retailerId,ts,votes FROM snapshot
                     WHERE retailerId IN ({ph}) ORDER BY retailerId,ts""", top_rids):
-            series[rid].append([ts, v])
+            raw_series[rid].append([ts, v])
+    # 降採樣：每 (日期, 6h-slot) 只留該 bucket 內最後一筆
+    series = {}
+    for rid, pts in raw_series.items():
+        bucket = {}
+        for ts, v in pts:
+            slot = int(ts[11:13]) // 6   # 0,1,2,3
+            key = (ts[:10], slot)
+            bucket[key] = [ts, v]        # 同 bucket 後寫蓋前
+        series[rid] = [bucket[k] for k in sorted(bucket)]
     name_map = {r["rid"]: f"{r['name']}（{r['city']}）" for r in latest[:50]}
 
     # alerts: vs SPIKE_HOURS 前最後一筆
