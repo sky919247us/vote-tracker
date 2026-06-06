@@ -249,11 +249,16 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
              ["店家", r => star(r.rid) + r.name],
              ["票數", r => r.votes],
              ["縣市", r => r.city]], d.top_now || [])}
-      <h4>單日增幅 TOP 10</h4>
+      <h4>單日增幅 TOP 10（近三日）</h4>
       ${tbl([["#", (r, i) => `${i + 1} ${rankCell(r)}`],
              ["店家", r => star(r.rid) + r.name],
-             ["增票", r => `+${r.delta}`],
-             ["當下", r => r.votes],
+             [`${(d.dates && d.dates.day_before) || "前天"}`,
+              r => r.delta_db == null ? "-" : `+${r.delta_db}`],
+             [`${(d.dates && d.dates.yesterday) || "昨天"}`,
+              r => `<b>+${r.delta}</b>`],
+             [`${(d.dates && d.dates.today) || "今天"}<br><span style="font-size:10px;color:#888">(累加中)</span>`,
+              r => r.delta_today == null ? "-" : `<span style="color:#2563eb">+${r.delta_today}</span>`],
+             ["現票", r => r.votes],
              ["縣市", r => r.city]],
             d.top_gain || [])}
       <h4>歸零店家</h4>
