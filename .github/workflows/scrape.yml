@@ -29,7 +29,7 @@ jobs:
           LAST_HOUR=$((LAST / 3600))
           NOW_HOUR=$((NOW / 3600))
           echo "上次 hour=$LAST_HOUR  現在 hour=$NOW_HOUR"
-          if [ "$LAST" -gt 0 ] && [ "$LAST_HOUR" -ge "$NOW_HOUR" ]; then
+          if [ "$LAST" -gt 0 ] && [ "$((NOW - LAST))" -lt 60 ]; then
             echo "⏭️ 本小時已更新過，跳過"
             echo "skip=true" >> $GITHUB_OUTPUT
           else
