@@ -30,10 +30,10 @@ def main():
         TW = zoneinfo.ZoneInfo("Asia/Taipei")
         now_tw = datetime.datetime.now(TW)
         ts_iso = now_tw.isoformat(timespec="seconds")
-        today = now_tw.date()
     except Exception:
         ts_iso = now_ts
-        today = datetime.date.today()
+    # 「今天」以 DB 最新 snapshot 的日期為準（避免系統時鐘與 DB 不同步時誤判）
+    today = datetime.date.fromisoformat(now_ts[:10])
     yest = today - datetime.timedelta(days=1)
 
     # 上一筆 ts 用來算排名變化
@@ -185,6 +185,38 @@ def main():
                     "delta_db": db_gain,
                     "delta_today": today_gain}
 
+        # 用「當日累加增票」排序（含尚未過完的今天）
+        retailer_info = dict(c.execute(
+            "SELECT retailerId, name||'|'||city FROM retailer"))
+        m_yest_end   = vmap(end_ts)
+        m_yest_start = vmap(start_ts)
+
+        gain_rows = []
+        for rid, namecity in retailer_info.items():
+            name, city = namecity.split("|", 1)
+            db_g = (m_db_end.get(rid, 0) - m_db_start.get(rid, 0)) \
+                if (db_end_ts and db_start_ts and db_end_ts != db_start_ts) else None
+            yest_g = (m_yest_end.get(rid, 0) - m_yest_start.get(rid, 0)) \
+                if (end_ts and start_ts and end_ts != start_ts) else None
+            today_g = (m_today_now.get(rid, 0) - m_today_st.get(rid, 0)) \
+                if today_start_ts else None
+            cur_votes = m_today_now.get(rid, m_yest_end.get(rid, 0))
+            # 排序鍵：今天有實際變化用今天，否則退回昨天，再退回前天
+            sort_key = (today_g if (today_g and today_g > 0)
+                        else (yest_g if (yest_g and yest_g > 0)
+                              else (db_g or 0)))
+            ch, dl = rchange(rid)
+            gain_rows.append({
+                "rid": rid, "name": name, "city": city,
+                "votes": cur_votes,
+                "delta_db":    db_g,
+                "delta_yest":  yest_g,
+                "delta_today": today_g,
+                "delta":       sort_key,        # 兼容舊欄位 / 主排序鍵
+                "rank_change": ch, "rank_delta": dl,
+            })
+        gain_rows.sort(key=lambda x: -(x["delta"] or 0))
+
         daily = {
             "date": str(yest),
             "dates": {
@@ -196,11 +228,7 @@ def main():
             "total_start": sum(r[4] for r in drows),
             "top_now": [with_rank({"rid": rid, "name": n, "city": c1, "votes": v})
                         for rid, n, c1, v, _, _ in drows[:10]],
-            "top_gain": sorted(
-                [with_3days(with_rank({"rid": rid, "name": n, "city": c1,
-                                       "delta": d, "votes": v}))
-                 for rid, n, c1, v, _, d in drows],
-                key=lambda x: -x["delta"])[:10],
+            "top_gain": gain_rows[:10],
             "zeroed": [{"name": n, "city": c1, "prev": b}
                        for rid, n, c1, v, b, _ in drows if b >= ZERO_FROM and v == 0][:20],
         }
