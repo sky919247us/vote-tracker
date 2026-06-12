@@ -249,7 +249,7 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
              ["店家", r => star(r.rid) + r.name],
              ["票數", r => r.votes],
              ["縣市", r => r.city]], d.top_now || [])}
-      <h4>單日增幅 TOP 10（依今日累加排序）</h4>
+      <h4>單日增幅 TOP 20（依今日累加排序）</h4>
       ${tbl([["#", (r, i) => `${i + 1} ${rankCell(r)}`],
              ["店家", r => star(r.rid) + r.name],
              [`${(d.dates && d.dates.day_before) || "前天"}`,

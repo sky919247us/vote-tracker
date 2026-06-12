@@ -201,10 +201,8 @@ def main():
             today_g = (m_today_now.get(rid, 0) - m_today_st.get(rid, 0)) \
                 if today_start_ts else None
             cur_votes = m_today_now.get(rid, m_yest_end.get(rid, 0))
-            # 排序鍵：今天有實際變化用今天，否則退回昨天，再退回前天
-            sort_key = (today_g if (today_g and today_g > 0)
-                        else (yest_g if (yest_g and yest_g > 0)
-                              else (db_g or 0)))
+            # 排序鍵：嚴格以「今日累加增票」排序（標題即為依今日累加排序）
+            sort_key = today_g if today_g is not None else 0
             ch, dl = rchange(rid)
             gain_rows.append({
                 "rid": rid, "name": name, "city": city,
@@ -215,7 +213,10 @@ def main():
                 "delta":       sort_key,        # 兼容舊欄位 / 主排序鍵
                 "rank_change": ch, "rank_delta": dl,
             })
-        gain_rows.sort(key=lambda x: -(x["delta"] or 0))
+        # 主排序：今日累加；同分時退回昨日增幅、再退回現票，維持穩定排序
+        gain_rows.sort(key=lambda x: (-(x["delta_today"] or 0),
+                                      -(x["delta_yest"] or 0),
+                                      -(x["votes"] or 0)))
 
         daily = {
             "date": str(yest),
@@ -228,7 +229,7 @@ def main():
             "total_start": sum(r[4] for r in drows),
             "top_now": [with_rank({"rid": rid, "name": n, "city": c1, "votes": v})
                         for rid, n, c1, v, _, _ in drows[:10]],
-            "top_gain": gain_rows[:10],
+            "top_gain": gain_rows[:20],
             "zeroed": [{"name": n, "city": c1, "prev": b}
                        for rid, n, c1, v, b, _ in drows if b >= ZERO_FROM and v == 0][:20],
         }
