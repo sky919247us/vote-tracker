@@ -1,8 +1,9 @@
 name: scrape
 on:
   schedule:
-    # 每整點跑一次（24 次/天）
-    - cron: "0 * * * *"
+    # 每 12 小時跑一次（00:00 / 12:00 UTC = 台北 08:00 / 20:00）
+    # 為控制 votes.db 體積，已由每小時改為每 12 小時
+    - cron: "0 0,12 * * *"
   workflow_dispatch:
 
 permissions:
