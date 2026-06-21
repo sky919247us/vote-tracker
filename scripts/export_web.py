@@ -65,7 +65,7 @@ def main():
         latest.append({"rid": rid, "name": n, "city": city, "address": addr,
                        "votes": v, "rank_change": change, "rank_delta": delta})
 
-    # series for top 50 — 每天降採樣為 4 個時段 (00/06/12/18)
+    # series for top 50 — 每天只取一個點（當日最後一筆）
     top_rids = [r["rid"] for r in latest[:50]]
     raw_series = defaultdict(list)
     if top_rids:
@@ -74,14 +74,12 @@ def main():
                 f"""SELECT retailerId,ts,votes FROM snapshot
                     WHERE retailerId IN ({ph}) ORDER BY retailerId,ts""", top_rids):
             raw_series[rid].append([ts, v])
-    # 降採樣：每 (日期, 6h-slot) 只留該 bucket 內最後一筆
+    # 降採樣：每一天只留當日最後一筆
     series = {}
     for rid, pts in raw_series.items():
         bucket = {}
         for ts, v in pts:
-            slot = int(ts[11:13]) // 6   # 0,1,2,3
-            key = (ts[:10], slot)
-            bucket[key] = [ts, v]        # 同 bucket 後寫蓋前
+            bucket[ts[:10]] = [ts, v]    # 同日後寫蓋前
         series[rid] = [bucket[k] for k in sorted(bucket)]
     name_map = {r["rid"]: f"{r['name']}（{r['city']}）" for r in latest[:50]}
 
@@ -115,8 +113,12 @@ def main():
             JOIN retailer r ON r.retailerId=s.retailerId
             WHERE s.ts=? GROUP BY r.city ORDER BY SUM(s.votes) DESC""", (now_ts,))
     ]
-    total_history = c.execute(
-        "SELECT ts, SUM(votes) FROM snapshot GROUP BY ts ORDER BY ts").fetchall()
+    # 全國總票數趨勢：每天只取一個點（當日最後一筆快照的全國加總）
+    _th_bucket = {}
+    for ts, tot in c.execute(
+            "SELECT ts, SUM(votes) FROM snapshot GROUP BY ts ORDER BY ts"):
+        _th_bucket[ts[:10]] = [ts, tot]   # 同日後寫蓋前
+    total_history = [_th_bucket[d] for d in sorted(_th_bucket)]
 
     # daily (today/yest 已在上方用 TW 算出)
     day_before = yest - datetime.timedelta(days=1)
