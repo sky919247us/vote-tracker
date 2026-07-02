@@ -2,7 +2,6 @@ name: scrape
 on:
   schedule:
     # 每 12 小時跑一次（00:00 / 12:00 UTC = 台北 08:00 / 20:00）
-    # 為控制 votes.db 體積，已由每小時改為每 12 小時
     - cron: "0 0,12 * * *"
   workflow_dispatch:
 
@@ -18,47 +17,47 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
+      # main 只有小檔（程式 + docs/data 的 JSON），淺層 checkout 即可
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0   # 完整歷史，rate limit 才看得到 votes.db 真正上次的 commit 時間
 
-      - name: Rate limit (one update per hour boundary)
-        id: gate
+      - name: Restore votes.db from db branch
         run: |
-          LAST=$(git log -1 --format=%ct -- votes.db 2>/dev/null || echo 0)
-          NOW=$(date +%s)
-          LAST_HOUR=$((LAST / 3600))
-          NOW_HOUR=$((NOW / 3600))
-          echo "上次 hour=$LAST_HOUR  現在 hour=$NOW_HOUR"
-          if [ "$LAST" -gt 0 ] && [ "$LAST_HOUR" -ge "$NOW_HOUR" ]; then
-            echo "⏭️ 本小時已更新過，跳過"
-            echo "skip=true" >> $GITHUB_OUTPUT
+          # votes.db 不放在 main 歷史，改存於獨立 db 分支（永遠單一 commit、不累積）
+          git config user.name github-actions
+          git config user.email actions@github.com
+          if git fetch --depth=1 origin db 2>/dev/null; then
+            git cat-file blob FETCH_HEAD:votes.db > votes.db
+            echo "restored votes.db ($(du -h votes.db | cut -f1))"
           else
-            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "db branch not found yet; starting fresh votes.db"
           fi
 
       - uses: actions/setup-python@v5
-        if: steps.gate.outputs.skip != 'true'
         with:
           python-version: "3.11"
           cache: "pip"
 
       - name: Install deps
-        if: steps.gate.outputs.skip != 'true'
         run: pip install -r requirements.txt
 
       - name: Scrape & export
-        if: steps.gate.outputs.skip != 'true'
         run: |
           python scripts/scrape.py
           python scripts/export_web.py
 
-      - name: Commit & push
-        if: steps.gate.outputs.skip != 'true'
+      - name: Push votes.db to db branch (single commit, no history)
         run: |
-          git config user.name github-actions
-          git config user.email actions@github.com
-          git add votes.db docs/data fail_count.txt 2>/dev/null || true
+          # 用 commit-tree 造一顆「無父節點」的 commit，只含 votes.db；
+          # force-push 覆蓋 db 分支 → 分支永遠只有 1 個 commit，repo 不會肥大
+          BLOB=$(git hash-object -w votes.db)
+          TREE=$(printf '100644 blob %s\tvotes.db\n' "$BLOB" | git mktree)
+          COMMIT=$(git commit-tree "$TREE" -m "db snapshot $(date -u +'%Y-%m-%d %H:%M UTC')")
+          git push -f origin "$COMMIT:refs/heads/db"
+
+      - name: Commit JSON to main
+        run: |
+          # main 只 commit 網站要讀的小 JSON（docs/data）＋ fail_count.txt
+          git add docs/data fail_count.txt 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "Nothing to commit"; exit 0
           fi

@@ -7,3 +7,6 @@ venv/
 Thumbs.db
 *.log
 v2rayN-windows-64/
+
+# votes.db 不再進 main 歷史；改由 CI 存放於獨立 db 分支（單一 commit、不累積）
+votes.db
