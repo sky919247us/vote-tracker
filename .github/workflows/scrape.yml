@@ -23,10 +23,11 @@ jobs:
       - name: Restore votes.db from db branch
         run: |
           # votes.db 不放在 main 歷史，改存於獨立 db 分支（永遠單一 commit、不累積）
+          # 因 votes.db 已 >100MB（GitHub 單檔上限），改壓成 votes.db.gz 存放
           git config user.name github-actions
           git config user.email actions@github.com
           if git fetch --depth=1 origin db 2>/dev/null; then
-            git cat-file blob FETCH_HEAD:votes.db > votes.db
+            git cat-file blob FETCH_HEAD:votes.db.gz | gunzip > votes.db
             echo "restored votes.db ($(du -h votes.db | cut -f1))"
           else
             echo "db branch not found yet; starting fresh votes.db"
@@ -45,12 +46,14 @@ jobs:
           python scripts/scrape.py
           python scripts/export_web.py
 
-      - name: Push votes.db to db branch (single commit, no history)
+      - name: Push votes.db.gz to db branch (single commit, no history)
         run: |
-          # 用 commit-tree 造一顆「無父節點」的 commit，只含 votes.db；
+          # gzip 壓縮（104MB → ~19MB，遠低於 100MB 上限）
+          gzip -c -9 votes.db > votes.db.gz
+          # 用 commit-tree 造一顆「無父節點」的 commit，只含 votes.db.gz；
           # force-push 覆蓋 db 分支 → 分支永遠只有 1 個 commit，repo 不會肥大
-          BLOB=$(git hash-object -w votes.db)
-          TREE=$(printf '100644 blob %s\tvotes.db\n' "$BLOB" | git mktree)
+          BLOB=$(git hash-object -w votes.db.gz)
+          TREE=$(printf '100644 blob %s\tvotes.db.gz\n' "$BLOB" | git mktree)
           COMMIT=$(git commit-tree "$TREE" -m "db snapshot $(date -u +'%Y-%m-%d %H:%M UTC')")
           git push -f origin "$COMMIT:refs/heads/db"
 
