@@ -31,35 +31,45 @@ document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
 const btn = $("refresh");
 const hint = $("refreshHint");
 
-// 自動每小時整點更新 → 顯示下次更新倒數
-function updateBtnState(latestTsIso) {
-  const now = Date.now();
-  const nextHour = (Math.floor(now / 3600000) + 1) * 3600000;
-  const wait = nextHour - now;
-  const nextTime = new Date(nextHour).toLocaleTimeString("zh-TW",
-    { timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", hour12: false });
-  const m = Math.ceil(wait / 60000);
-  hint.textContent = `下次自動更新：${nextTime}（${m} 分後）`;
-  setTimeout(() => updateBtnState(latestTsIso), Math.min(wait + 5000, 30000));
+// 台北時間的時鐘（回傳 {date:"YYYY-MM-DD", hour, min}）
+function twNow() {
+  const s = new Date().toLocaleString("en-CA", {
+    timeZone: "Asia/Taipei", hour12: false,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit",
+  }); // "2026-07-02, 23:04"
+  const [date, time] = s.split(", ");
+  const [hour, min] = time.split(":").map(Number);
+  return { date, hour: hour % 24, min };
+}
+function twDate(iso) {
+  return iso ? new Date(iso).toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" }) : "";
 }
 
-// 每整點後 3 分鐘是「更新中」窗口：若 latest.ts 還停在上小時就顯示提示+輪詢
+// 自動每日更新（台北約 23:00 一次）→ 顯示下次更新倒數
+function updateBtnState(latestTsIso) {
+  const t = twNow();
+  // 距離下一個台北 23:00 還有多久
+  let mins = (23 - t.hour) * 60 - t.min;
+  if (mins <= 0) mins += 24 * 60;         // 已過今天 23:00 → 算到明天
+  const h = Math.floor(mins / 60), m = mins % 60;
+  hint.textContent = `下次自動更新：每日約 23:00（約 ${h} 小時 ${m} 分後）`;
+  setTimeout(() => updateBtnState(latestTsIso), 60000);
+}
+
+// 台北 23 點更新窗口：若「今天」的資料還沒進來就顯示提示 + 輪詢
 function watchForUpdate(latestTsIso) {
-  const now = Date.now();
-  const curHour = Math.floor(now / 3600000);
-  const lastHour = latestTsIso ? Math.floor(new Date(latestTsIso).getTime() / 3600000) : 0;
-  const secIntoHour = (now / 1000) % 3600;
-  if (secIntoHour < 180 && lastHour < curHour) {
-    const remain = Math.ceil((180 - secIntoHour));
+  const t = twNow();
+  const haveToday = twDate(latestTsIso) === t.date;
+  if (t.hour === 23 && !haveToday) {
     $("ts").innerHTML =
       `<span class="tag" style="background:#fef3c7;color:#92400e">🔄 數據更新中…</span>` +
-      `預計 ${Math.ceil(remain/60)} 分內完成`;
-    // 20 秒後拉一次 latest.json 看新資料來了沒
+      `今日資料稍後更新`;
+    // 30 秒後拉一次 latest.json 看今天的新資料來了沒
     setTimeout(async () => {
       try {
         const d = await fetch("data/latest.json?t=" + Date.now()).then(r => r.json());
-        const newH = Math.floor(new Date(d.ts_iso || d.ts).getTime() / 3600000);
-        if (newH >= curHour) {
+        if (twDate(d.ts_iso || d.ts) === t.date) {
           location.reload();
         } else {
           watchForUpdate(latestTsIso);
@@ -67,7 +77,7 @@ function watchForUpdate(latestTsIso) {
       } catch (e) {
         watchForUpdate(latestTsIso);
       }
-    }, 20000);
+    }, 30000);
     return true;
   }
   return false;
@@ -215,7 +225,6 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
     { responsive: true });
 
   // ── 異常 ──
-  $("winH").textContent = alerts.window_h || 12;
   $("winT").textContent = alerts.threshold || 100;
   const deltaCell = r =>
     `<span class="v ${r.delta >= 0 ? 'up' : 'down'}">${r.prev} → <b>${r.now}</b> (${r.delta >= 0 ? '+' : ''}${r.delta})</span>`;
@@ -249,14 +258,14 @@ Promise.all(["latest", "series", "summary", "alerts", "daily", "forecast", "susp
              ["店家", r => star(r.rid) + r.name],
              ["票數", r => r.votes],
              ["縣市", r => r.city]], d.top_now || [])}
-      <h4>單日增幅 TOP 20（依今日累加排序）</h4>
+      <h4>單日增幅 TOP 20（依最近一日增票排序）</h4>
       ${tbl([["#", (r, i) => `${i + 1} ${rankCell(r)}`],
              ["店家", r => star(r.rid) + r.name],
              [`${(d.dates && d.dates.day_before) || "前天"}`,
               r => r.delta_db == null ? "-" : `+${r.delta_db}`],
              [`${(d.dates && d.dates.yesterday) || "昨天"}`,
               r => r.delta_yest == null ? "-" : `+${r.delta_yest}`],
-             [`${(d.dates && d.dates.today) || "今天"}<br><span style="font-size:10px;color:#888">(累加中)</span>`,
+             [`${(d.dates && d.dates.today) || "今天"}`,
               r => r.delta_today == null ? "-" :
                 `<b style="color:#2563eb">+${r.delta_today}</b>`],
              ["現票", r => r.votes],

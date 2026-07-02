@@ -1,14 +1,14 @@
 name: scrape
 on:
   schedule:
-    # 每 12 小時跑一次（00:00 / 12:00 UTC = 台北 08:00 / 20:00）
-    - cron: "0 0,12 * * *"
+    # 每日 15:00 UTC = 台北 23:00，一天只抓一次
+    - cron: "0 15 * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
 
-# 同一時間只跑一個 scrape，避免多個 run 同時 push 衝突
+# 同一時間只跑一個 scrape，避免多個觸發同時 push 衝突（也用來對 23 點多重觸發去重）
 concurrency:
   group: scrape
   cancel-in-progress: false
@@ -17,55 +17,74 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      # main 只有小檔（程式 + docs/data 的 JSON），淺層 checkout 即可
       - uses: actions/checkout@v4
 
-      - name: Restore votes.db from db branch
+      - name: Gate — 一天只抓一次（台北 23 點）
+        id: gate
         run: |
-          # votes.db 不放在 main 歷史，改存於獨立 db 分支（永遠單一 commit、不累積）
-          # 因 votes.db 已 >100MB（GitHub 單檔上限），改壓成 votes.db.gz 存放
-          git config user.name github-actions
-          git config user.email actions@github.com
-          if git fetch --depth=1 origin db 2>/dev/null; then
+          H=$(TZ=Asia/Taipei date +%H)
+          TODAY=$(TZ=Asia/Taipei date +%F)
+          echo "台北 $TODAY $H 點"
+          # Cloudflare Worker 每小時觸發，但只在台北 23 點真正執行 → 一天一筆
+          if [ "$H" != "23" ]; then
+            echo "非台北 23 點，跳過本次觸發"
+            echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # 已是 23 點：還原 db 分支的 votes.db，檢查今天是否已抓過（同一小時多重觸發去重）
+          git fetch --depth=1 origin db 2>/dev/null || true
+          if git cat-file -e FETCH_HEAD:votes.db.gz 2>/dev/null; then
             git cat-file blob FETCH_HEAD:votes.db.gz | gunzip > votes.db
-            echo "restored votes.db ($(du -h votes.db | cut -f1))"
+            LAST=$(python3 -c "import sqlite3;print((sqlite3.connect('votes.db').execute('SELECT max(ts) FROM snapshot').fetchone()[0] or '')[:10])" 2>/dev/null || echo "")
           else
-            echo "db branch not found yet; starting fresh votes.db"
+            LAST=""
+          fi
+          echo "DB 最新日期=$LAST"
+          if [ "$LAST" = "$TODAY" ]; then
+            echo "今天已經抓過了，跳過"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/setup-python@v5
+        if: steps.gate.outputs.run == 'true'
         with:
           python-version: "3.11"
           cache: "pip"
 
       - name: Install deps
+        if: steps.gate.outputs.run == 'true'
         run: pip install -r requirements.txt
 
       - name: Scrape & export
+        if: steps.gate.outputs.run == 'true'
         run: |
           python scripts/scrape.py
           python scripts/export_web.py
 
       - name: Push votes.db.gz to db branch (single commit, no history)
+        if: steps.gate.outputs.run == 'true'
         run: |
-          # gzip 壓縮（104MB → ~19MB，遠低於 100MB 上限）
+          # gzip 壓縮（8萬筆約 1.4MB，遠低於 GitHub 100MB 單檔上限）
+          git config user.name github-actions
+          git config user.email actions@github.com
           gzip -c -9 votes.db > votes.db.gz
-          # 用 commit-tree 造一顆「無父節點」的 commit，只含 votes.db.gz；
-          # force-push 覆蓋 db 分支 → 分支永遠只有 1 個 commit，repo 不會肥大
+          # commit-tree 造無父節點的 commit，只含 votes.db.gz；force-push 覆蓋 → db 分支永遠 1 個 commit
           BLOB=$(git hash-object -w votes.db.gz)
           TREE=$(printf '100644 blob %s\tvotes.db.gz\n' "$BLOB" | git mktree)
-          COMMIT=$(git commit-tree "$TREE" -m "db snapshot $(date -u +'%Y-%m-%d %H:%M UTC')")
+          COMMIT=$(git commit-tree "$TREE" -m "db snapshot $(TZ=Asia/Taipei date +'%Y-%m-%d %H:%M')")
           git push -f origin "$COMMIT:refs/heads/db"
 
       - name: Commit JSON to main
+        if: steps.gate.outputs.run == 'true'
         run: |
-          # main 只 commit 網站要讀的小 JSON（docs/data）＋ fail_count.txt
+          git config user.name github-actions
+          git config user.email actions@github.com
           git add docs/data fail_count.txt 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "Nothing to commit"; exit 0
           fi
-          git commit -m "snapshot $(date -u +'%Y-%m-%d %H:%M UTC')"
-          # 重試 5 次：push 失敗就 rebase 再試（避免並發 push 撞車）
+          git commit -m "snapshot $(TZ=Asia/Taipei date +'%Y-%m-%d %H:%M')"
           for i in 1 2 3 4 5; do
             if git push; then exit 0; fi
             echo "push attempt $i failed; pulling rebase…"

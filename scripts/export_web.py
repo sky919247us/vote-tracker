@@ -83,19 +83,20 @@ def main():
         series[rid] = [bucket[k] for k in sorted(bucket)]
     name_map = {r["rid"]: f"{r['name']}（{r['city']}）" for r in latest[:50]}
 
-    # alerts: vs SPIKE_HOURS 前最後一筆
-    cutoff = (datetime.datetime.strptime(now_ts, "%Y-%m-%d %H:%M:%S")
-              - datetime.timedelta(hours=SPIKE_HOURS)).strftime("%Y-%m-%d %H:%M:%S")
-    diff_rows = c.execute("""
-        WITH latest AS (SELECT retailerId,votes FROM snapshot WHERE ts=?),
-        baseline AS (SELECT s.retailerId,s.votes FROM snapshot s
-            JOIN (SELECT retailerId,MAX(ts) mt FROM snapshot WHERE ts<=? GROUP BY retailerId) b
-            ON b.retailerId=s.retailerId AND b.mt=s.ts)
-        SELECT r.name,r.city,r.address,l.votes,COALESCE(b.votes,0),
-               l.votes-COALESCE(b.votes,0) d
-        FROM latest l JOIN retailer r ON r.retailerId=l.retailerId
-        LEFT JOIN baseline b ON b.retailerId=l.retailerId
-        ORDER BY d DESC""", (now_ts, cutoff)).fetchall()
+    # alerts：與「前一日」那筆比較（資料一天一筆）
+    prev_day_ts = c.execute(
+        "SELECT MAX(ts) FROM snapshot WHERE date(ts) < date(?)", (now_ts,)).fetchone()[0]
+    if prev_day_ts:
+        diff_rows = c.execute("""
+            WITH latest AS (SELECT retailerId,votes FROM snapshot WHERE ts=?),
+            baseline AS (SELECT retailerId,votes FROM snapshot WHERE ts=?)
+            SELECT r.name,r.city,r.address,l.votes,COALESCE(b.votes,0),
+                   l.votes-COALESCE(b.votes,0) d
+            FROM latest l JOIN retailer r ON r.retailerId=l.retailerId
+            LEFT JOIN baseline b ON b.retailerId=l.retailerId
+            ORDER BY d DESC""", (now_ts, prev_day_ts)).fetchall()
+    else:
+        diff_rows = []
 
     def row(name, city, addr, v, b, d):
         return {"name": name, "city": city, "address": addr,
@@ -120,120 +121,86 @@ def main():
         _th_bucket[ts[:10]] = [ts, tot]   # 同日後寫蓋前
     total_history = [_th_bucket[d] for d in sorted(_th_bucket)]
 
-    # daily (today/yest 已在上方用 TW 算出)
-    day_before = yest - datetime.timedelta(days=1)
-    end_ts = c.execute("SELECT MAX(ts) FROM snapshot WHERE ts<?",
-                       (f"{today} 00:00:00",)).fetchone()[0]
-    start_ts = c.execute("SELECT MIN(ts) FROM snapshot WHERE ts>=?",
-                         (f"{yest} 00:00:00",)).fetchone()[0]
+    # daily：資料已改為「一天一筆」（每日約 23:00 一筆），用連續每日快照算日增
+    # delta_today = 最近一日增票、delta_yest = 前一日、delta_db = 再前一日
+    day_ts = [r[0] for r in c.execute(
+        "SELECT MAX(ts) FROM snapshot GROUP BY date(ts) ORDER BY date(ts)")]
     daily = None
-    if end_ts and start_ts and end_ts != start_ts:
-        # 計算「昨日結束 vs 前日結束」的排名變化
-        ref_ts = c.execute("SELECT MAX(ts) FROM snapshot WHERE ts<?",
-                           (f"{yest} 00:00:00",)).fetchone()[0]
-        end_rank = {rid: i+1 for i,(rid,) in enumerate(c.execute(
-            "SELECT retailerId FROM snapshot WHERE ts=? ORDER BY votes DESC, retailerId",
-            (end_ts,)))}
-        ref_rank = {rid: i+1 for i,(rid,) in enumerate(c.execute(
-            "SELECT retailerId FROM snapshot WHERE ts=? ORDER BY votes DESC, retailerId",
-            (ref_ts,)))} if ref_ts else {}
-        def rchange(rid):
-            cur = end_rank.get(rid); pr = ref_rank.get(rid)
-            if cur is None: return ("flat", 0)
-            if pr is None:  return ("new", 0)
-            if pr > cur:    return ("up", pr-cur)
-            if pr < cur:    return ("down", pr-cur)
-            return ("flat", 0)
-
-        # 前天 / 今天 的快照時間點
-        db_end_ts = c.execute("SELECT MAX(ts) FROM snapshot WHERE ts<?",
-                              (f"{yest} 00:00:00",)).fetchone()[0]
-        db_start_ts = c.execute("SELECT MIN(ts) FROM snapshot WHERE ts>=?",
-                                (f"{day_before} 00:00:00",)).fetchone()[0]
-        today_start_ts = c.execute("SELECT MIN(ts) FROM snapshot WHERE ts>=?",
-                                   (f"{today} 00:00:00",)).fetchone()[0]
+    if len(day_ts) >= 2:
+        t_today = day_ts[-1]
+        t_yest  = day_ts[-2]
+        t_dbef  = day_ts[-3] if len(day_ts) >= 3 else None
+        t_ref   = day_ts[-4] if len(day_ts) >= 4 else None
 
         def vmap(ts):
             return dict(c.execute("SELECT retailerId,votes FROM snapshot WHERE ts=?",
                                   (ts,))) if ts else {}
-        m_db_end    = vmap(db_end_ts)
-        m_db_start  = vmap(db_start_ts)
-        m_today_st  = vmap(today_start_ts)
-        # today_now = now_ts → 用 latest 直接抓
+        m_today, m_yest = vmap(t_today), vmap(t_yest)
+        m_dbef,  m_ref  = vmap(t_dbef),  vmap(t_ref)
 
-        drows = c.execute("""
-            WITH e AS (SELECT retailerId,votes FROM snapshot WHERE ts=?),
-                 s AS (SELECT retailerId,votes FROM snapshot WHERE ts=?)
-            SELECT r.retailerId,r.name,r.city,e.votes,COALESCE(s.votes,0),e.votes-COALESCE(s.votes,0) d
-            FROM e JOIN retailer r ON r.retailerId=e.retailerId
-            LEFT JOIN s ON s.retailerId=e.retailerId ORDER BY e.votes DESC
-        """, (end_ts, start_ts)).fetchall()
+        def rankmap(ts):
+            return {rid: i+1 for i, (rid,) in enumerate(c.execute(
+                "SELECT retailerId FROM snapshot WHERE ts=? ORDER BY votes DESC, retailerId",
+                (ts,)))} if ts else {}
+        rk_today, rk_yest = rankmap(t_today), rankmap(t_yest)
 
-        # 各店今日當下票（從 latest）
-        m_today_now = {r["rid"]: r["votes"] for r in latest}
+        def rchange(rid):
+            cur, pr = rk_today.get(rid), rk_yest.get(rid)
+            if cur is None: return ("flat", 0)
+            if pr is None:  return ("new", 0)
+            if pr > cur:    return ("up", pr - cur)
+            if pr < cur:    return ("down", pr - cur)
+            return ("flat", 0)
 
-        def gains(rid):
-            db = (m_db_end.get(rid, 0) - m_db_start.get(rid, 0)) if (db_end_ts and db_start_ts and db_end_ts != db_start_ts) else None
-            tg = m_today_now.get(rid, 0) - m_today_st.get(rid, 0) if today_start_ts else None
-            return db, tg
-
-        def with_rank(d):
-            ch, dl = rchange(d["rid"])
-            return {**d, "rank_change": ch, "rank_delta": dl}
-
-        def with_3days(d):
-            db_gain, today_gain = gains(d["rid"])
-            return {**d,
-                    "delta_db": db_gain,
-                    "delta_today": today_gain}
-
-        # 用「當日累加增票」排序（含尚未過完的今天）
         retailer_info = dict(c.execute(
             "SELECT retailerId, name||'|'||city FROM retailer"))
-        m_yest_end   = vmap(end_ts)
-        m_yest_start = vmap(start_ts)
-
         gain_rows = []
         for rid, namecity in retailer_info.items():
+            if rid not in m_today and rid not in m_yest:
+                continue
             name, city = namecity.split("|", 1)
-            db_g = (m_db_end.get(rid, 0) - m_db_start.get(rid, 0)) \
-                if (db_end_ts and db_start_ts and db_end_ts != db_start_ts) else None
-            yest_g = (m_yest_end.get(rid, 0) - m_yest_start.get(rid, 0)) \
-                if (end_ts and start_ts and end_ts != start_ts) else None
-            today_g = (m_today_now.get(rid, 0) - m_today_st.get(rid, 0)) \
-                if today_start_ts else None
-            cur_votes = m_today_now.get(rid, m_yest_end.get(rid, 0))
-            # 排序鍵：嚴格以「今日累加增票」排序（標題即為依今日累加排序）
-            sort_key = today_g if today_g is not None else 0
+            vt = m_today.get(rid, 0)
+            today_g = vt - m_yest.get(rid, 0)
+            yest_g = (m_yest.get(rid, 0) - m_dbef.get(rid, 0)) if t_dbef else None
+            db_g   = (m_dbef.get(rid, 0) - m_ref.get(rid, 0)) if t_ref else None
             ch, dl = rchange(rid)
             gain_rows.append({
-                "rid": rid, "name": name, "city": city,
-                "votes": cur_votes,
-                "delta_db":    db_g,
-                "delta_yest":  yest_g,
-                "delta_today": today_g,
-                "delta":       sort_key,        # 兼容舊欄位 / 主排序鍵
-                "rank_change": ch, "rank_delta": dl,
+                "rid": rid, "name": name, "city": city, "votes": vt,
+                "delta_db": db_g, "delta_yest": yest_g, "delta_today": today_g,
+                "delta": today_g, "rank_change": ch, "rank_delta": dl,
             })
-        # 主排序：今日累加；同分時退回昨日增幅、再退回現票，維持穩定排序
         gain_rows.sort(key=lambda x: (-(x["delta_today"] or 0),
                                       -(x["delta_yest"] or 0),
                                       -(x["votes"] or 0)))
 
+        top_now = []
+        for rid, n, c1, v in c.execute("""
+                SELECT r.retailerId, r.name, r.city, s.votes FROM snapshot s
+                JOIN retailer r ON r.retailerId=s.retailerId
+                WHERE s.ts=? ORDER BY s.votes DESC, r.retailerId LIMIT 10""", (t_today,)):
+            ch, dl = rchange(rid)
+            top_now.append({"rid": rid, "name": n, "city": c1, "votes": v,
+                            "rank_change": ch, "rank_delta": dl})
+
+        zeroed = []
+        for rid in m_yest:
+            if m_yest.get(rid, 0) >= ZERO_FROM and m_today.get(rid, 0) == 0:
+                name, city = retailer_info.get(rid, "|").split("|", 1)
+                zeroed.append({"name": name, "city": city, "prev": m_yest[rid]})
+        zeroed = zeroed[:20]
+
         daily = {
-            "date": str(yest),
+            "date": t_yest[:10],
             "dates": {
-                "day_before": str(day_before),
-                "yesterday":  str(yest),
-                "today":      str(today),
+                "day_before": (t_dbef[:10] if t_dbef else t_yest[:10]),
+                "yesterday":  t_yest[:10],
+                "today":      t_today[:10],
             },
-            "total_now": sum(r[3] for r in drows),
-            "total_start": sum(r[4] for r in drows),
-            "top_now": [with_rank({"rid": rid, "name": n, "city": c1, "votes": v})
-                        for rid, n, c1, v, _, _ in drows[:10]],
+            "total_now": sum(m_today.values()),
+            "total_start": sum(m_yest.get(rid, 0) for rid in m_today),
+            "top_now": top_now,
             "top_gain": gain_rows[:20],
-            "zeroed": [{"name": n, "city": c1, "prev": b}
-                       for rid, n, c1, v, b, _ in drows if b >= ZERO_FROM and v == 0][:20],
+            "zeroed": zeroed,
         }
 
     # forecast
